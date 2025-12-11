@@ -40,6 +40,7 @@ namespace Platformer.Mechanics
                 ev.player = player;
                 ev.enemy = this;
             }
+            GameStats.Kills++;
         }
 
         void Update()
