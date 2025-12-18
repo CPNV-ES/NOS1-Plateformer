@@ -1,16 +1,20 @@
 using UnityEngine;
 using TMPro;
-using Platformer.Core;
-using Platformer.Model;
 
 public class ScoreUI : MonoBehaviour
 {
     public TMP_Text scoreText;
 
+    void Start()
+    {
+        // When the UI loads, we count the enemies/gems once.
+        GameStats.InitializeLevel();
+    }
+
     void Update()
     {
-        // Récupère le score depuis le modèle
-        var model = Simulation.GetModel<PlatformerModel>();
-        scoreText.text = "Score: " + model.playerScore;
+        // Retrieve the calculated score based on Kills/Gems
+        int currentScore = GameStats.CalculateScore();
+        scoreText.text = "Score: " + currentScore;
     }
 }

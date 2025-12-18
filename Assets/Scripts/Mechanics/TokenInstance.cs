@@ -57,7 +57,6 @@ namespace Platformer.Mechanics
             var ev = Schedule<PlayerTokenCollision>();
             ev.token = this;
             ev.player = player;
-            GameStats.Gems++;
         }
     }
 }
