@@ -26,7 +26,7 @@ namespace Platformer.Mechanics
                     // from your GameManager, PlayerController, or TokenController.
                     LevelStats stats = new LevelStats();
                     
-                    stats.playerName = "Player1"; // Or use: System.Environment.UserName
+                    stats.playerName = PlayerPrefs.GetString("PlayerName", "Unknown");
                     stats.timeElapsed = Time.timeSinceLevelLoad; // Current level time
                     stats.percentage = 100f; // They finished, so 100%
                     stats.gems = GameStats.Gems;
