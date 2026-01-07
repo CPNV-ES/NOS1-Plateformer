@@ -1,59 +1,53 @@
 using Platformer.Gameplay;
+using Platformer.Mechanics; 
 using UnityEngine;
 using static Platformer.Core.Simulation;
 
-namespace Platformer.Mechanics
+public class VictoryZone : MonoBehaviour
 {
-    /// <summary>
-    /// Marks a trigger as a VictoryZone, usually used to end the current game level.
-    /// Sends stats to Redis on level completion.
-    /// </summary>
-    public class VictoryZone : MonoBehaviour
+    [Header("Database Connection")]
+    public RedisManager redisManager;
+
+    [Header("UI")]
+    public VictoryUI victoryUI;
+
+    [Header("Timer Reference")]
+    public GameTimer timer;
+
+    [Header("Player Settings")]
+    public string playerPrefsKey = "PlayerName";
+
+    void OnTriggerEnter2D(Collider2D collider)
     {
-        [Header("Database Connection")]
-        [Tooltip("Drag your RedisManager GameObject here")]
-        public RedisManager redisManager;
-
-        [Header("Player Settings")]
-        [Tooltip("Player name saved in PlayerPrefs")]
-        public string playerPrefsKey = "PlayerName";
-
-        void OnTriggerEnter2D(Collider2D collider)
+        var player = collider.gameObject.GetComponent<PlayerController>();
+        if (player != null)
         {
-            var player = collider.gameObject.GetComponent<PlayerController>();
-            if (player != null)
+            // Calcul du score et du temps
+            int finalScore = GameStats.CalculateScore();
+
+            // Stats pour Redis
+            LevelStats stats = new LevelStats
             {
-                // ===========================
-                // 1️⃣ Collect stats
-                // ===========================
-                LevelStats stats = new LevelStats
-                {
-                    playerName = PlayerPrefs.GetString(playerPrefsKey, "Unknown"),
-                    score = GameStats.CalculateScore(),
-                    kills = GameStats.Kills,
-                    gems = GameStats.Gems,
-                    timePlayed = Time.timeSinceLevelLoad
-                };
+                playerName = PlayerPrefs.GetString(playerPrefsKey, "Unknown"),
+                score = finalScore,
+                kills = GameStats.Kills,
+                gems = GameStats.Gems,
+                timePlayed = timer != null ? timer.FinalTime : 0f
+            };
 
-                // ===========================
-                // 2️⃣ Send to Redis
-                // ===========================
-                if (redisManager != null)
-                {
-                    redisManager.SaveStats(stats);
-                    Debug.Log($"Stats sent to Redis: {stats.playerName} | Score: {stats.score}");
-                }
-                else
-                {
-                    Debug.LogWarning("RedisManager is not assigned in the VictoryZone Inspector!");
-                }
+            if (redisManager != null)
+                redisManager.SaveStats(stats);
 
-                // ===========================
-                // 3️⃣ Execute original victory logic
-                // ===========================
-                var ev = Schedule<PlayerEnteredVictoryZone>();
-                ev.victoryZone = this;
+            // Affichage de la fenêtre de victoire
+            if (victoryUI != null)
+            {
+                victoryUI.timer = timer; // on relie le timer au VictoryUI
+                victoryUI.ShowVictory(finalScore);
             }
+
+            // Logique originale
+            var ev = Schedule<PlayerEnteredVictoryZone>();
+            ev.victoryZone = this;
         }
     }
 }
