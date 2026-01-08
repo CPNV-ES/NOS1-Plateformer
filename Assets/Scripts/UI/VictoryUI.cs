@@ -7,12 +7,12 @@ public class VictoryUI : MonoBehaviour
     public GameObject victoryPanel;
 
     [Header("Texts")]
-    public TMP_Text messageText;
+    public TMP_Text messageText; // The text that says "Score Final" or "New Record"
     public TMP_Text finalScoreText;
     public TMP_Text finalTimeText; 
 
     [Header("Timer Reference")]
-    public GameTimer timer; // référence au GameTimer
+    public GameTimer timer; 
 
     void Start()
     {
@@ -25,18 +25,38 @@ public class VictoryUI : MonoBehaviour
         if (victoryPanel != null)
             victoryPanel.SetActive(true);
 
+        // Initial state while waiting for database
         if (messageText != null)
-            messageText.text = "Ton score final est :";
+        {
+            messageText.text = "Vérification...";
+            messageText.color = Color.white;
+        }
 
         if (finalScoreText != null)
             finalScoreText.text = score.ToString();
 
-        // Récupère le temps directement depuis le GameTimer
         if (finalTimeText != null && timer != null)
             finalTimeText.text = $"Temps : {timer.FinalTime:0.0}s";
 
-        // Pause le jeu
+        // Pause game
         Time.timeScale = 0f;
+    }
+
+    // Called by VictoryZone after Redis responds
+    public void UpdateHighScoreMessage(bool isNewRecord)
+    {
+        if (messageText == null) return;
+
+        if (isNewRecord)
+        {
+            messageText.text = "NOUVEAU RECORD !";
+            messageText.color = Color.green; 
+        }
+        else
+        {
+            messageText.text = "Score non battu";
+            messageText.color = Color.yellow; 
+        }
     }
 
     public void HideVictory()
