@@ -1,33 +1,36 @@
 using UnityEngine;
-using UnityEngine.Networking;
-using System.Collections;
+using System;
 
 public class LeaderboardManager : MonoBehaviour
 {
-    private string baseUrl = "http://localhost:7379";
+    // We now use the central RedisManager to do the heavy lifting
+    public RedisManager redisManager;
 
-    public void GetTopPlayers(int count)
+    /// <summary>
+    /// Fetches the top players from the Unraid API.
+    /// This is a bridge method in case other scripts need to trigger a fetch.
+    /// </summary>
+    public void GetTopPlayers(Action<RedisManager.LeaderboardEntry[]> callback)
     {
-        StartCoroutine(GetTopPlayersRoutine(count));
+        if (redisManager != null)
+        {
+            redisManager.GetLeaderboard(callback);
+        }
+        else
+        {
+            Debug.LogError("LeaderboardManager: RedisManager is not assigned in the inspector!");
+            callback?.Invoke(null);
+        }
     }
 
-    private IEnumerator GetTopPlayersRoutine(int count)
+    // This method is kept for compatibility with your older scripts
+    // It just redirects the request to the new system.
+    public void RefreshLeaderboard()
     {
-        string url = $"{baseUrl}/ZREVRANGE/leaderboard/0/{count - 1}/WITHSCORES";
-
-        using (UnityWebRequest request = UnityWebRequest.Get(url))
+        if (redisManager != null)
         {
-            yield return request.SendWebRequest();
-
-            if (request.result != UnityWebRequest.Result.Success)
-            {
-                Debug.LogError(request.error);
-            }
-            else
-            {
-                Debug.Log("Leaderboard brut : " + request.downloadHandler.text);
-                // Tu peux parser ici pour l'UI
-            }
+            // We don't do anything with the data here because the UI usually handles the callback
+            redisManager.GetLeaderboard(null); 
         }
     }
 }

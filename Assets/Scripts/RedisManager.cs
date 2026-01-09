@@ -1,133 +1,135 @@
 using UnityEngine;
 using UnityEngine.Networking;
 using System.Collections;
-using System; // Needed for Action<bool>
+using System;
 
 public class RedisManager : MonoBehaviour
 {
-    // Webdis URL
-    public string baseUrl = "http://localhost:7379";
-
-    // =========================
-    // SAVE STATS (With Check)
-    // =========================
-    // We added 'Action<bool> onResult' to let the caller know if it was a high score
-    public void SaveStats(LevelStats stats, Action<bool> onResult = null)
-    {
-        StartCoroutine(SaveStatsRoutine(stats, onResult));
+    [Serializable]
+    private class Config { 
+        public string baseUrl;
+        public string apiKey; 
     }
 
-    private IEnumerator SaveStatsRoutine(LevelStats newStats, Action<bool> onResult)
+    private Config _config;
+
+    void Awake()
     {
-        string key = "stats:" + newStats.playerName;
-        string getUrl = $"{baseUrl}/GET/{key}";
-
-        bool isNewHighScore = false;
-
-        // STEP 1: Check existing data in DB
-        using (UnityWebRequest getRequest = UnityWebRequest.Get(getUrl))
+        // Load config from Resources/config.json
+        TextAsset configAsset = Resources.Load<TextAsset>("config");
+        if (configAsset != null)
         {
-            yield return getRequest.SendWebRequest();
-
-            if (getRequest.result != UnityWebRequest.Result.Success)
-            {
-                Debug.LogError("Database Error (GET): " + getRequest.error);
-                // If DB fails, we assume it's true just to be safe, or false to prevent overwrites. 
-                // Let's stop to be safe.
-                onResult?.Invoke(false);
-                yield break; 
-            }
-
-            string jsonResponse = getRequest.downloadHandler.text;
-
-            // If "GET": null, player doesn't exist yet -> Save it.
-            if (jsonResponse.Contains(":null") || jsonResponse.Contains(": null"))
-            {
-                isNewHighScore = true;
-            }
-            else
-            {
-                // Parse the Webdis wrapper
-                WebdisResponse wrapper = JsonUtility.FromJson<WebdisResponse>(jsonResponse);
-                
-                if (!string.IsNullOrEmpty(wrapper.GET))
-                {
-                    LevelStats oldStats = JsonUtility.FromJson<LevelStats>(wrapper.GET);
-
-                    // LOGIC: New Score > Old Score OR (Same Score AND New Time < Old Time)
-                    if (newStats.score > oldStats.score)
-                    {
-                        isNewHighScore = true;
-                    }
-                    else if (newStats.score == oldStats.score && newStats.timePlayed < oldStats.timePlayed)
-                    {
-                        isNewHighScore = true;
-                    }
-                }
-                else
-                {
-                    // If wrapper was empty for some reason, treat as new
-                    isNewHighScore = true;
-                }
-            }
-        }
-
-        // STEP 2: Save only if it is a new high score
-        if (isNewHighScore)
-        {
-            string json = JsonUtility.ToJson(newStats);
-            string setUrl = $"{baseUrl}/SET/{key}/{UnityWebRequest.EscapeURL(json)}";
-
-            using (UnityWebRequest setRequest = UnityWebRequest.Get(setUrl))
-            {
-                yield return setRequest.SendWebRequest();
-                
-                if (setRequest.result == UnityWebRequest.Result.Success)
-                    Debug.Log($"Stats updated for {newStats.playerName}!");
-                else
-                    Debug.LogError("Error saving stats: " + setRequest.error);
-            }
+            _config = JsonUtility.FromJson<Config>(configAsset.text);
+            
+            // Safety check: Remove trailing slash if it exists
+            if (_config.baseUrl.EndsWith("/")) 
+                _config.baseUrl = _config.baseUrl.TrimEnd('/');
         }
         else
         {
-            Debug.Log($"Score ({newStats.score}) was not better than existing record. Save skipped.");
+            Debug.LogError("RedisManager: Assets/Resources/config.json not found!");
         }
-
-        // STEP 3: Tell the VictoryZone (and UI) what happened
-        onResult?.Invoke(isNewHighScore);
     }
 
-    // =========================
-    // LEADERBOARD
-    // =========================
-    public void AddScoreToLeaderboard(string playerName, int score, float time)
+    // ==========================================
+    // SAVE STATS
+    // ==========================================
+    // 2. Update the SaveStats method signature
+    public void SaveStats(LevelStats stats, Action<SaveResponse> onResult = null)
     {
-        StartCoroutine(AddScoreRoutine(playerName, score, time));
+        if (_config == null) return;
+        StartCoroutine(SaveStatsRoutine(stats, onResult));
     }
 
-    private IEnumerator AddScoreRoutine(string playerName, int score, float time)
+    // 3. Update the Routine to parse the JSON
+    private IEnumerator SaveStatsRoutine(LevelStats stats, Action<SaveResponse> onResult)
     {
-        // Composite Score Math: Score + (1 / (Time + 1))
-        double compositeScore = (double)score + (1.0 / (double)(time + 1.0));
-        
-        // F6 for precision, InvariantCulture for dots instead of commas
-        string scoreStr = compositeScore.ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
-        
-        string url = $"{baseUrl}/ZADD/leaderboard/{scoreStr}/{UnityWebRequest.EscapeURL(playerName)}";
+        stats.playerName = stats.playerName.Trim();
+        stats.deviceId = SystemInfo.deviceUniqueIdentifier;
+        string jsonData = JsonUtility.ToJson(stats);
+        string url = $"{_config.baseUrl}/save";
+
+        using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
+        {
+            byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(jsonData);
+            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Content-Type", "application/json");
+            request.SetRequestHeader("X-API-KEY", _config.apiKey);
+
+            yield return request.SendWebRequest();
+
+            if (request.result == UnityWebRequest.Result.Success)
+            {
+                // Parse the response from Python
+                string json = request.downloadHandler.text;
+                SaveResponse response = JsonUtility.FromJson<SaveResponse>(json);
+                
+                onResult?.Invoke(response);
+            }
+            else
+            {
+                Debug.LogError($"Save Failed: {request.downloadHandler.text}");
+                onResult?.Invoke(null);
+            }
+        }
+    }
+
+    // ==========================================
+    // GET LEADERBOARD
+    // ==========================================
+    public void GetLeaderboard(Action<LeaderboardEntry[]> onCallback)
+    {
+        if (_config == null) return;
+        StartCoroutine(GetLeaderboardRoutine(onCallback));
+    }
+
+    private IEnumerator GetLeaderboardRoutine(Action<LeaderboardEntry[]> onCallback)
+    {
+        // Use clean baseUrl + endpoint
+        string url = $"{_config.baseUrl}/leaderboard";
 
         using (UnityWebRequest request = UnityWebRequest.Get(url))
         {
             yield return request.SendWebRequest();
 
-            if (request.result != UnityWebRequest.Result.Success)
-                Debug.LogError("Leaderboard Error: " + request.error);
+            if (request.result == UnityWebRequest.Result.Success)
+            {
+                // Parse the JSON Array using our Helper
+                LeaderboardEntry[] entries = JsonHelper.FromJson<LeaderboardEntry>(request.downloadHandler.text);
+                onCallback?.Invoke(entries);
+            }
+            else
+            {
+                Debug.LogError($"Leaderboard fetch failed: {request.error}");
+                onCallback?.Invoke(null);
+            }
         }
+    }
+    
+    // --- HELPER CLASSES ---
+    [Serializable]
+    public class LeaderboardEntry {
+        public string name;
+        public int score;
+        public float time;
+    }
+
+    // Helper to handle JSON arrays (Unity's JsonUtility cannot parse top-level arrays directly)
+    private static class JsonHelper {
+        public static T[] FromJson<T>(string json) {
+            string newJson = "{ \"items\": " + json + "}";
+            Wrapper<T> wrapper = JsonUtility.FromJson<Wrapper<T>>(newJson);
+            return wrapper.items;
+        }
+        [Serializable] private class Wrapper<T> { public T[] items; }
     }
 }
 
-// Helper class to read Webdis JSON
 [Serializable]
-public class WebdisResponse
+public class SaveResponse
 {
-    public string GET;
+    public string status;
+    public int currentScore;
+    public int previousBest;
 }

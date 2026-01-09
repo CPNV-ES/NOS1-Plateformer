@@ -4,6 +4,7 @@ using System;
 public class LevelStats
 {
     public string playerName;
+    public string deviceId;
     public int score;
     public int kills;
     public int gems;

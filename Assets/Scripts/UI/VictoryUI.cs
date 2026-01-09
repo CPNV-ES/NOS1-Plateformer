@@ -7,7 +7,7 @@ public class VictoryUI : MonoBehaviour
     public GameObject victoryPanel;
 
     [Header("Texts")]
-    public TMP_Text messageText; // The text that says "Score Final" or "New Record"
+    public TMP_Text messageText;
     public TMP_Text finalScoreText;
     public TMP_Text finalTimeText; 
 
@@ -42,20 +42,39 @@ public class VictoryUI : MonoBehaviour
         Time.timeScale = 0f;
     }
 
-    // Called by VictoryZone after Redis responds
-    public void UpdateHighScoreMessage(bool isNewRecord)
+    public void UpdateHighScoreMessage(SaveResponse response)
     {
         if (messageText == null) return;
 
-        if (isNewRecord)
+        if (response == null)
         {
-            messageText.text = "NOUVEAU RECORD !";
-            messageText.color = Color.green; 
+            messageText.text = "Offline Mode";
+            return;
+        }
+
+        if (response.status == "new_record")
+        {
+            // CASE 1: New Personal Best
+            messageText.text = "NOUVEAU RECORD PERSO !";
+            messageText.color = Color.green;
+
+            if (finalScoreText != null)
+            {
+                int diff = response.currentScore - response.previousBest;
+                finalScoreText.text = $"{response.currentScore} <size=60%><color=green>(+{diff})</color></size>";
+            }
         }
         else
         {
-            messageText.text = "Score non battu";
-            messageText.color = Color.yellow; 
+            // CASE 2: Not good enough
+            messageText.text = "Record Perso Non Battu";
+            messageText.color = Color.yellow;
+
+            if (finalScoreText != null)
+            {
+                int diff = response.previousBest - response.currentScore;
+                finalScoreText.text = $"{response.currentScore} <size=60%><color=red>(-{diff})</color></size>";
+            }
         }
     }
 
