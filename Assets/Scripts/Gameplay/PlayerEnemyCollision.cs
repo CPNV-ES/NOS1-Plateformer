@@ -30,6 +30,8 @@ namespace Platformer.Gameplay
                     enemyHealth.Decrement();
                     if (!enemyHealth.IsAlive)
                     {
+                        // Increment global stats
+                        GameStats.Kills++;
                         Schedule<EnemyDeath>().enemy = enemy;
                         player.Bounce(2);
                     }
@@ -40,6 +42,8 @@ namespace Platformer.Gameplay
                 }
                 else
                 {
+                    // Increment global stats
+                    GameStats.Kills++;
                     Schedule<EnemyDeath>().enemy = enemy;
                     player.Bounce(2);
                 }
